@@ -7,7 +7,7 @@ import (
 )
 
 func TestTicklerIntegration(t *testing.T) {
-	tl := New()
+	tl := New(Args{})
 	tl.Start()
 	tl.Enqueue(Request{Job: "1", F: func() error {
 		fmt.Println("1")

@@ -17,9 +17,8 @@ const (
 	defaultRequestLimit = 100
 )
 
-type ticklerEvent struct {
-	mu     sync.Mutex
-	fnOpts *ticklerFunctionOptions
+type Event struct {
+	fnOpts *eventOptions
 	Job    JobName
 	f      BackgroundFunction
 	ctx    context.Context
@@ -32,9 +31,9 @@ type Request struct {
 	Job JobName
 }
 
-func newTicklerEvent(ctx context.Context, request Request, opts ...TicklerFunctionOption) *ticklerEvent {
-	t := &ticklerEvent{
-		fnOpts: &ticklerFunctionOptions{},
+func newEvent(ctx context.Context, request Request, opts ...EventOption) *Event {
+	t := &Event{
+		fnOpts: &eventOptions{},
 		f:      request.F,
 		Job:    request.Job,
 		ctx:    ctx,
@@ -48,43 +47,48 @@ func newTicklerEvent(ctx context.Context, request Request, opts ...TicklerFuncti
 	return t
 }
 
-type ticklerFunctionOptions struct {
+type eventOptions struct {
 	waitFor []string
 	timeout time.Duration
 }
 
-type TicklerFunctionOption interface {
-	apply(*ticklerFunctionOptions)
+type EventOption interface {
+	apply(*eventOptions)
 }
 
-type ticklerFunctionOption struct {
-	f func(*ticklerFunctionOptions)
+type eventOption struct {
+	f func(*eventOptions)
 }
 
-func (tfo *ticklerFunctionOption) apply(opts *ticklerFunctionOptions) {
-	tfo.f(opts)
+func (o *eventOption) apply(opts *eventOptions) {
+	o.f(opts)
 }
 
-func newTicklerFunctionOption(f func(*ticklerFunctionOptions)) *ticklerFunctionOption {
-	return &ticklerFunctionOption{
+func newEventOption(f func(*eventOptions)) *eventOption {
+	return &eventOption{
 		f: f,
 	}
 }
 
-func WaitForJobs(jobNames ...JobName) TicklerFunctionOption {
-	return newTicklerFunctionOption(func(t *ticklerFunctionOptions) {
+func WaitForJobs(jobNames ...JobName) EventOption {
+	return newEventOption(func(t *eventOptions) {
 		t.waitFor = jobNames
 	})
 }
 
-func WithTimeout(duration time.Duration) TicklerFunctionOption {
-	return newTicklerFunctionOption(func(t *ticklerFunctionOptions) {
+func WithTimeout(duration time.Duration) EventOption {
+	return newEventOption(func(t *eventOptions) {
 		t.timeout = duration
 	})
 }
 
 type ticklerOptions struct {
 	sema chan int
+}
+
+type Args struct {
+	Limit int64
+	Ctx   context.Context
 }
 
 type Tickler struct {
@@ -98,12 +102,12 @@ type Tickler struct {
 	jobsWaitFor map[JobName][]chan struct{}
 }
 
-func (s *Tickler) EnqueueWithContext(ctx context.Context, request Request, opts ...TicklerFunctionOption) {
+func (s *Tickler) EnqueueWithContext(ctx context.Context, request Request, opts ...EventOption) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	defer s.tickleLoop()
 
-	ticklerEvent := newTicklerEvent(ctx, request, opts...)
+	ticklerEvent := newEvent(ctx, request, opts...)
 
 	s.currentJobs[request.Job] = true
 
@@ -115,12 +119,12 @@ func (s *Tickler) EnqueueWithContext(ctx context.Context, request Request, opts 
 	log.Printf("Added request to queue with length %d\n", s.queue.Len())
 }
 
-func (s *Tickler) Enqueue(request Request, opts ...TicklerFunctionOption) {
+func (s *Tickler) Enqueue(request Request, opts ...EventOption) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	defer s.tickleLoop()
 
-	ticklerEvent := newTicklerEvent(context.Background(), request, opts...)
+	ticklerEvent := newEvent(context.Background(), request, opts...)
 
 	s.currentJobs[request.Job] = true
 
@@ -162,13 +166,13 @@ func (s *Tickler) tryDequeue() {
 	}
 }
 
-func (s *Tickler) dequeue() *ticklerEvent {
+func (s *Tickler) dequeue() *Event {
 	element := s.queue.Front()
 	s.queue.Remove(element)
-	return element.Value.(*ticklerEvent)
+	return element.Value.(*Event)
 }
 
-func (s *Tickler) removeJob(event *ticklerEvent) {
+func (s *Tickler) removeJob(event *Event) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -180,7 +184,7 @@ func (s *Tickler) removeJob(event *ticklerEvent) {
 	delete(s.currentJobs, event.Job)
 }
 
-func (s *Tickler) process(event *ticklerEvent) {
+func (s *Tickler) process(event *Event) {
 	defer s.replenish()
 	defer s.removeJob(event)
 
@@ -196,8 +200,13 @@ func (s *Tickler) process(event *ticklerEvent) {
 		select {
 		case <-event.ch:
 			cnt--
-		default:
 		}
+	}
+
+	if event.fnOpts.timeout > 0 {
+		ctx, cancel := context.WithTimeout(event.ctx, event.fnOpts.timeout)
+		event.ctx = ctx
+		defer cancel()
 	}
 
 	go func() {
@@ -208,22 +217,13 @@ func (s *Tickler) process(event *ticklerEvent) {
 		ch <- struct{}{}
 	}()
 
-	if event.fnOpts.timeout > 0 {
-		ctx, cancel := context.WithTimeout(event.ctx, event.fnOpts.timeout)
-		event.mu.Lock()
-		event.ctx = ctx
-		event.mu.Unlock()
-		defer cancel()
-	}
-
 	select {
 	case <-event.ctx.Done():
-		log.Printf("event context cancalled for %v", event.Job)
+		log.Printf("event context cancelled for %v", event.Job)
 		return
 	case <-ch:
 		return
 	}
-
 }
 
 func (s *Tickler) replenish() {
@@ -248,14 +248,22 @@ func (s *Tickler) Stop() {
 }
 
 // New creates a new Tickler with default settings.
-func New() *Tickler {
+func New(args Args) *Tickler {
+	if args.Limit < 1 {
+		args.Limit = defaultRequestLimit
+	}
+
+	if args.Ctx == nil {
+		args.Ctx = context.Background()
+	}
+
 	service := &Tickler{
 		queue: list.New(),
 		options: ticklerOptions{
-			sema: make(chan int, defaultRequestLimit),
+			sema: make(chan int, args.Limit),
 		},
-		ctx:         context.Background(),
-		loopSignal:  make(chan struct{}, defaultRequestLimit),
+		ctx:         args.Ctx,
+		loopSignal:  make(chan struct{}, args.Limit),
 		currentJobs: make(map[string]bool),
 		jobsWaitFor: make(map[string][]chan struct{}),
 	}
