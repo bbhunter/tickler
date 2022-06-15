@@ -13,13 +13,13 @@ func TestTicklerIntegration(t *testing.T) {
 	tl.Start(ctx)
 	tl.EnqueueRequest(Request{Job: "1", F: func() error {
 		fmt.Println("1")
-		time.Sleep(time.Second * 10)
+		time.Sleep(time.Second * 3)
 		return nil
 	}})
 
 	tl.EnqueueRequest(Request{Job: "2", F: func() error {
 		fmt.Println("2")
-		time.Sleep(time.Second * 10)
+		time.Sleep(time.Second * 3)
 		return nil
 	}})
 
@@ -28,5 +28,5 @@ func TestTicklerIntegration(t *testing.T) {
 		return nil
 	}}, WaitForJobs("1", "2"))
 
-	time.Sleep(time.Second * 50)
+	time.Sleep(time.Second * 10)
 }

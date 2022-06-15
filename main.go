@@ -20,6 +20,8 @@ type ticklerEvent struct {
 	fnOpts *ticklerFunctionOptions
 	Job    JobName
 	f      BackgroundFunction
+
+	ch chan struct{}
 }
 
 type Request struct {
@@ -32,6 +34,7 @@ func newTicklerEvent(request Request, opts ...TicklerFunctionOption) *ticklerEve
 		fnOpts: &ticklerFunctionOptions{},
 		f:      request.F,
 		Job:    request.Job,
+		ch:     make(chan struct{}),
 	}
 
 	for _, opt := range opts {
@@ -43,7 +46,6 @@ func newTicklerEvent(request Request, opts ...TicklerFunctionOption) *ticklerEve
 
 type ticklerFunctionOptions struct {
 	waitFor []string
-	ch      chan struct{}
 }
 
 type TicklerFunctionOption interface {
@@ -66,7 +68,6 @@ func newTicklerFunctionOption(f func(*ticklerFunctionOptions)) *ticklerFunctionO
 
 func WaitForJobs(jobNames ...JobName) TicklerFunctionOption {
 	return newTicklerFunctionOption(func(t *ticklerFunctionOptions) {
-		t.ch = make(chan struct{})
 		t.waitFor = jobNames
 	})
 }
@@ -82,27 +83,24 @@ type Tickler struct {
 	loopSignal chan struct{}
 
 	currentJobs map[JobName]bool
-	jobsWaitFor map[JobName][]*chan struct{}
-
-	events map[JobName]*ticklerEvent
+	jobsWaitFor map[JobName][]chan struct{}
 }
 
 func (s *Tickler) EnqueueRequest(request Request, opts ...TicklerFunctionOption) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.tickleLoop()
 
 	ticklerEvent := newTicklerEvent(request, opts...)
 
 	s.currentJobs[request.Job] = true
-	s.events[request.Job] = ticklerEvent
 
 	for _, v := range ticklerEvent.fnOpts.waitFor {
-		s.jobsWaitFor[v] = append(s.jobsWaitFor[v], &ticklerEvent.fnOpts.ch)
+		s.jobsWaitFor[v] = append(s.jobsWaitFor[v], ticklerEvent.ch)
 	}
 
 	s.queue.PushBack(ticklerEvent)
 	log.Printf("Added request to queue with length %d\n", s.queue.Len())
-	s.tickleLoop()
 }
 
 func (s *Tickler) loop(ctx context.Context) {
@@ -146,17 +144,11 @@ func (s *Tickler) removeJob(event *ticklerEvent) {
 	defer s.mu.Unlock()
 
 	for _, v := range s.jobsWaitFor[event.Job] {
-		*v <- struct{}{}
+		v <- struct{}{}
 	}
 
+	delete(s.jobsWaitFor, event.Job)
 	delete(s.currentJobs, event.Job)
-}
-
-func (s *Tickler) notify(jobName JobName) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.events[jobName].fnOpts.ch <- struct{}{}
 }
 
 func (s *Tickler) process(event *ticklerEvent) {
@@ -166,12 +158,15 @@ func (s *Tickler) process(event *ticklerEvent) {
 	cnt := len(event.fnOpts.waitFor)
 
 	for {
-		if cnt == 0 {
+		if cnt < 1 {
 			break
 		}
 
-		<-event.fnOpts.ch
-		cnt--
+		select {
+		case <-event.ch:
+			cnt--
+		default:
+		}
 	}
 
 	if err := event.f(); err != nil {
@@ -203,10 +198,9 @@ func New() *Tickler {
 		options: TicklerOptions{
 			sema: make(chan int, defaultRequestLimit),
 		},
-		loopSignal:  make(chan struct{}, 1),
+		loopSignal:  make(chan struct{}, defaultRequestLimit),
 		currentJobs: make(map[string]bool),
-		jobsWaitFor: make(map[string][]*chan struct{}),
-		events:      make(map[string]*ticklerEvent),
+		jobsWaitFor: make(map[string][]chan struct{}),
 	}
 
 	return service
