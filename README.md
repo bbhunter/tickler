@@ -1,7 +1,7 @@
 <div align="center">
 <h1>tickler</h1>
 
-[Tickler](https://github.com/goodjobtech/tickler), is a library for long-running services to **emqueue** and **process** the jobs in the background with **simplicity** and **performance** in mind. 
+[Tickler](https://github.com/goodjobtech/tickler), is a library for long-running services to **enqueue** and **process** the jobs in the background with **simplicity** and **performance** in mind. 
 
 
 </div>
