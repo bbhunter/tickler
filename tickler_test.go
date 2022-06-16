@@ -1,13 +1,14 @@
 package tickler
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 )
 
 func TestTicklerIntegration(t *testing.T) {
-	tl := New(Args{})
+	tl := New()
 	tl.Start()
 	tl.Enqueue(Request{Job: "1", F: func() error {
 		fmt.Println("1")
@@ -36,7 +37,7 @@ func TestTicklerIntegration(t *testing.T) {
 		return nil
 	}}, WaitForJobs("3", "2", "4"))
 
-	time.Sleep(time.Second * 10)
+	time.Sleep(time.Second * 6)
 
 	tl.Enqueue(Request{Job: "6", F: func() error {
 		fmt.Println("6")
@@ -46,5 +47,39 @@ func TestTicklerIntegration(t *testing.T) {
 		return nil
 	}})
 
-	tl.Stop()
+	time.Sleep(time.Second * 4)
+
+	tl.Enqueue(Request{Job: "7", F: func() error {
+		fmt.Println("7")
+		return nil
+	}})
+
+	time.Sleep(time.Second * 1)
+}
+
+func TestTicklerIfSuccess(t *testing.T) {
+	tl := New()
+	tl.Start()
+
+	tl.Enqueue(Request{Job: "1", F: func() error {
+		fmt.Println("1")
+		return nil
+	}})
+
+	tl.Enqueue(Request{Job: "2", F: func() error {
+		fmt.Println("2")
+		return errors.New("error")
+	}}, IfSuccess("1"))
+
+	tl.Enqueue(Request{Job: "3", F: func() error {
+		fmt.Println("3")
+		return nil
+	}}, IfSuccess("1", "2"))
+
+	tl.Enqueue(Request{Job: "4", F: func() error {
+		fmt.Println("4")
+		return nil
+	}}, IfSuccess("3"))
+
+	time.Sleep(time.Second * 5)
 }

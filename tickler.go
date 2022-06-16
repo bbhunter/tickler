@@ -5,12 +5,20 @@ import (
 	"context"
 	"log"
 	"sync"
-	"time"
 )
 
 type (
-	JobName            = string
-	BackgroundFunction = func() error
+	JobName                 = string
+	BackgroundFn            = func() error
+	BackgroundFnWithContext = func(context.Context) error
+)
+
+type status = int
+
+const (
+	statusUndefined status = iota
+	statusSuccess
+	statusFailure
 )
 
 const (
@@ -20,24 +28,29 @@ const (
 type Event struct {
 	fnOpts *eventOptions
 	Job    JobName
-	f      BackgroundFunction
+	f      BackgroundFn
 	ctx    context.Context
+	result status
 
-	ch chan struct{}
+	ch       chan struct{}
+	resultCh chan status
 }
 
 type Request struct {
-	F   BackgroundFunction
+	F   BackgroundFn
+	FC  BackgroundFnWithContext
 	Job JobName
 }
 
 func newEvent(ctx context.Context, request Request, opts ...EventOption) *Event {
 	t := &Event{
-		fnOpts: &eventOptions{},
-		f:      request.F,
-		Job:    request.Job,
-		ctx:    ctx,
-		ch:     make(chan struct{}),
+		fnOpts:   &eventOptions{},
+		f:        request.F,
+		Job:      request.Job,
+		ctx:      ctx,
+		ch:       make(chan struct{}),
+		result:   statusSuccess,
+		resultCh: make(chan status),
 	}
 
 	for _, opt := range opts {
@@ -48,8 +61,9 @@ func newEvent(ctx context.Context, request Request, opts ...EventOption) *Event 
 }
 
 type eventOptions struct {
-	waitFor []string
-	timeout time.Duration
+	waitFor   []JobName
+	ifSuccess []JobName
+	ifFailure []JobName
 }
 
 type EventOption interface {
@@ -76,30 +90,35 @@ func WaitForJobs(jobNames ...JobName) EventOption {
 	})
 }
 
-func WithTimeout(duration time.Duration) EventOption {
+func IfSuccess(jobNames ...JobName) EventOption {
 	return newEventOption(func(t *eventOptions) {
-		t.timeout = duration
+		t.ifSuccess = jobNames
 	})
 }
 
-type ticklerOptions struct {
-	sema chan int
+func IfFailure(jobNames ...JobName) EventOption {
+	return newEventOption(func(t *eventOptions) {
+		t.ifFailure = jobNames
+	})
 }
 
-type Args struct {
+type Options struct {
 	Limit int64
 	Ctx   context.Context
+
+	sema chan int
 }
 
 type Tickler struct {
 	mu         sync.Mutex
 	ctx        context.Context
 	queue      *list.List
-	options    ticklerOptions
+	options    Options
 	loopSignal chan struct{}
 
 	currentJobs map[JobName]bool
 	jobsWaitFor map[JobName][]chan struct{}
+	resultCh    map[JobName][]chan status
 }
 
 func (s *Tickler) EnqueueWithContext(ctx context.Context, request Request, opts ...EventOption) {
@@ -130,6 +149,10 @@ func (s *Tickler) Enqueue(request Request, opts ...EventOption) {
 
 	for _, v := range ticklerEvent.fnOpts.waitFor {
 		s.jobsWaitFor[v] = append(s.jobsWaitFor[v], ticklerEvent.ch)
+	}
+
+	for _, v := range ticklerEvent.fnOpts.ifSuccess {
+		s.resultCh[v] = append(s.resultCh[v], ticklerEvent.resultCh)
 	}
 
 	s.queue.PushBack(ticklerEvent)
@@ -180,8 +203,18 @@ func (s *Tickler) removeJob(event *Event) {
 		v <- struct{}{}
 	}
 
+	for _, v := range s.resultCh[event.Job] {
+		v <- event.result
+	}
+
 	delete(s.jobsWaitFor, event.Job)
 	delete(s.currentJobs, event.Job)
+}
+
+type eventResults struct {
+	SucceededEvents int
+	FailedEvents    int
+	TotalEvents     int
 }
 
 func (s *Tickler) process(event *Event) {
@@ -189,40 +222,47 @@ func (s *Tickler) process(event *Event) {
 	defer s.removeJob(event)
 
 	cnt := len(event.fnOpts.waitFor)
+	eventRes := eventResults{
+		SucceededEvents: len(event.fnOpts.ifSuccess),
+		FailedEvents:    len(event.fnOpts.ifFailure),
+		TotalEvents:     len(event.fnOpts.ifSuccess) + len(event.fnOpts.ifFailure),
+	}
 
-	ch := make(chan struct{})
 	// Wait for other jobs to be done
 	for {
-		if cnt < 1 {
+		if cnt < 1 && eventRes.TotalEvents == 0 {
 			break
 		}
 
 		select {
 		case <-event.ch:
 			cnt--
+		case r := <-event.resultCh:
+			eventRes.TotalEvents--
+			if r == statusSuccess {
+				eventRes.SucceededEvents--
+			} else {
+				eventRes.FailedEvents--
+			}
 		}
 	}
 
-	if event.fnOpts.timeout > 0 {
-		ctx, cancel := context.WithTimeout(event.ctx, event.fnOpts.timeout)
-		event.ctx = ctx
-		defer cancel()
+	// If all jobs are done, then we can proceed
+	if eventRes.SucceededEvents != 0 || eventRes.FailedEvents != 0 {
+		event.result = statusFailure
+		return
 	}
-
-	go func() {
-		if err := event.f(); err != nil {
-			log.Printf("background task got error: %v", err)
-		}
-
-		ch <- struct{}{}
-	}()
 
 	select {
 	case <-event.ctx.Done():
 		log.Printf("event context cancelled for %v", event.Job)
 		return
-	case <-ch:
-		return
+	default:
+
+		if err := event.f(); err != nil {
+			log.Printf("background task got error: %v", err)
+			event.result = statusFailure
+		}
 	}
 }
 
@@ -244,28 +284,23 @@ func (s *Tickler) Start() {
 }
 
 func (s *Tickler) Stop() {
-	s.ctx.Done()
+	ctx, cancel := context.WithCancel(s.ctx)
+	defer cancel()
+	s.ctx = ctx
 }
 
 // New creates a new Tickler with default settings.
-func New(args Args) *Tickler {
-	if args.Limit < 1 {
-		args.Limit = defaultRequestLimit
-	}
-
-	if args.Ctx == nil {
-		args.Ctx = context.Background()
-	}
-
+func New() *Tickler {
 	service := &Tickler{
 		queue: list.New(),
-		options: ticklerOptions{
-			sema: make(chan int, args.Limit),
+		options: Options{
+			sema: make(chan int, defaultRequestLimit),
 		},
-		ctx:         args.Ctx,
-		loopSignal:  make(chan struct{}, args.Limit),
+		ctx:         context.Background(),
+		loopSignal:  make(chan struct{}, defaultRequestLimit),
 		currentJobs: make(map[string]bool),
 		jobsWaitFor: make(map[string][]chan struct{}),
+		resultCh:    make(map[string][]chan status),
 	}
 
 	return service
