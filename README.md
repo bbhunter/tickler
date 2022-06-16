@@ -262,3 +262,11 @@ func main() {
 	scheduler.Enqueue(request, tickler.WithRetry(4))
 }
 ```
+
+## Contributing
+
+All kinds of pull request and feature requests are welcomed!
+
+## License
+
+tickler's source code is licensed under [MIT License](https://choosealicense.com/licenses/mit/).
