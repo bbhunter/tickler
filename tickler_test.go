@@ -83,3 +83,20 @@ func TestTicklerIfSuccess(t *testing.T) {
 
 	time.Sleep(time.Second * 5)
 }
+
+func TestTicklerRetry(t *testing.T) {
+	tl := New()
+	tl.Start()
+
+	tl.Enqueue(Request{Job: "1", F: func() error {
+		fmt.Println("1")
+		return errors.New("error")
+	}}, WithRetry(10))
+
+	tl.Enqueue(Request{Job: "2", F: func() error {
+		fmt.Println("2")
+		return nil
+	}}, WithRetry(10))
+
+	time.Sleep(time.Second * 5)
+}

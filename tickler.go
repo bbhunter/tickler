@@ -5,25 +5,20 @@ import (
 	"context"
 	"log"
 	"sync"
+	"time"
 )
 
-type (
-	JobName                 = string
-	BackgroundFn            = func() error
-	BackgroundFnWithContext = func(context.Context) error
-)
+type Tickler struct {
+	mu         sync.Mutex
+	ctx        context.Context
+	queue      *list.List
+	options    Options
+	loopSignal chan struct{}
 
-type status = int
-
-const (
-	statusUndefined status = iota
-	statusSuccess
-	statusFailure
-)
-
-const (
-	defaultRequestLimit = 100
-)
+	currentJobs map[JobName]bool
+	jobsWaitFor map[JobName][]chan struct{}
+	resultCh    map[JobName][]chan status
+}
 
 type Event struct {
 	fnOpts *eventOptions
@@ -40,85 +35,6 @@ type Request struct {
 	F   BackgroundFn
 	FC  BackgroundFnWithContext
 	Job JobName
-}
-
-func newEvent(ctx context.Context, request Request, opts ...EventOption) *Event {
-	t := &Event{
-		fnOpts:   &eventOptions{},
-		f:        request.F,
-		Job:      request.Job,
-		ctx:      ctx,
-		ch:       make(chan struct{}),
-		result:   statusSuccess,
-		resultCh: make(chan status),
-	}
-
-	for _, opt := range opts {
-		opt.apply(t.fnOpts)
-	}
-
-	return t
-}
-
-type eventOptions struct {
-	waitFor   []JobName
-	ifSuccess []JobName
-	ifFailure []JobName
-}
-
-type EventOption interface {
-	apply(*eventOptions)
-}
-
-type eventOption struct {
-	f func(*eventOptions)
-}
-
-func (o *eventOption) apply(opts *eventOptions) {
-	o.f(opts)
-}
-
-func newEventOption(f func(*eventOptions)) *eventOption {
-	return &eventOption{
-		f: f,
-	}
-}
-
-func WaitForJobs(jobNames ...JobName) EventOption {
-	return newEventOption(func(t *eventOptions) {
-		t.waitFor = jobNames
-	})
-}
-
-func IfSuccess(jobNames ...JobName) EventOption {
-	return newEventOption(func(t *eventOptions) {
-		t.ifSuccess = jobNames
-	})
-}
-
-func IfFailure(jobNames ...JobName) EventOption {
-	return newEventOption(func(t *eventOptions) {
-		t.ifFailure = jobNames
-	})
-}
-
-type Options struct {
-	Limit int64
-	Ctx   context.Context
-
-	sema chan int
-}
-
-type Tickler struct {
-	mu         sync.Mutex
-	ctx        context.Context
-	queue      *list.List
-	options    Options
-	loopSignal chan struct{}
-
-	currentJobs map[JobName]bool
-	jobsWaitFor map[JobName][]chan struct{}
-	resultCh    map[JobName][]chan status
 }
 
 func (s *Tickler) EnqueueWithContext(ctx context.Context, request Request, opts ...EventOption) {
@@ -258,10 +174,21 @@ func (s *Tickler) process(event *Event) {
 		log.Printf("event context cancelled for %v", event.Job)
 		return
 	default:
+		for i := 0; i < event.fnOpts.retryOpts.maxRetries; i++ {
+			if err := event.f(); err != nil {
+				log.Printf("background task got error: %v", err)
+				event.result = statusFailure
+			} else {
+				event.result = statusSuccess
+			}
 
-		if err := event.f(); err != nil {
-			log.Printf("background task got error: %v", err)
-			event.result = statusFailure
+			if event.result == statusSuccess {
+				break
+			}
+
+			backoff := event.fnOpts.retryOpts.backoff.Duration()
+			log.Printf("Retrying in %v seconds", backoff)
+			time.Sleep(backoff)
 		}
 	}
 }
