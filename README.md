@@ -47,33 +47,6 @@ func main() {
 }
 ```
 
-### Enqueue a job with context
-
-```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"github.com/goodjobtech/tickler"
-)
-
-func main() {
-	scheduler := tickler.New()
-
-	request := tickler.Request{
-		Job: func() error {
-			fmt.Println("Hello World!")
-			return nil
-		},
-		Name: "hello-world",
-	}
-    
-	ctx = context.WithValue(ctx, "name", "tickler")
-	tl.EnqueueWithContext(ctx, request)
-}
-```
-
 ### Wait for another job to be completed
 
 ```go
