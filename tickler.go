@@ -224,6 +224,13 @@ func (s *Tickler) SetContext(ctx context.Context) {
 
 // New creates a new Tickler with default settings.
 func New(ctx context.Context, limit int) *Tickler {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if limit < 1 {
+		limit = DefaultRequestLimit
+	}
 
 	service := &Tickler{
 		queue: list.New(),
