@@ -1,7 +1,7 @@
 <div align="center">
 <h1>tickler</h1>
 
-[Tickler](https://github.com/goodjobtech/tickler), a general purpose library for long-running services **enqueuing** and **processing** jobs in the background with **simplicity** and **performance** in mind. 
+[Tickler](https://github.com/goodjobtech/tickler), is a library for long-running services to **emqueue** and **process** the jobs in the background with **simplicity** and **performance** in mind. 
 
 
 </div>
@@ -20,28 +20,6 @@ $ go get -u github.com/goodjobtech/tickler
 ```
 
 ## Usage
-
-### Create a new Tickler instance
-
-```go
-package main
-
-import (
-	"context"
-	"github.com/goodjobtech/tickler"
-)
-
-func main() {
-	// Create a mnew
-	tl := tickler.New()
-	
-	// Starts service loop to process jobs
-	tl.Start()
-	
-	// Stops service loop to process next jobs
-	tl.Stop()
-}
-```
 
 ### Enqueue a job
 
