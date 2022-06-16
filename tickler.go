@@ -23,7 +23,7 @@ type Tickler struct {
 type Event struct {
 	fnOpts *eventOptions
 	Job    JobName
-	f      BackgroundFn
+	f      BackgroundFunction
 	ctx    context.Context
 	result status
 
@@ -32,9 +32,8 @@ type Event struct {
 }
 
 type Request struct {
-	F   BackgroundFn
-	FC  BackgroundFnWithContext
-	Job JobName
+	Job  BackgroundFunction
+	Name JobName
 }
 
 func (s *Tickler) EnqueueWithContext(ctx context.Context, request Request, opts ...EventOption) {
@@ -44,7 +43,7 @@ func (s *Tickler) EnqueueWithContext(ctx context.Context, request Request, opts 
 
 	ticklerEvent := newEvent(ctx, request, opts...)
 
-	s.currentJobs[request.Job] = true
+	s.currentJobs[request.Name] = true
 
 	for _, v := range ticklerEvent.fnOpts.waitFor {
 		s.jobsWaitFor[v] = append(s.jobsWaitFor[v], ticklerEvent.ch)
@@ -61,7 +60,7 @@ func (s *Tickler) Enqueue(request Request, opts ...EventOption) {
 
 	ticklerEvent := newEvent(context.Background(), request, opts...)
 
-	s.currentJobs[request.Job] = true
+	s.currentJobs[request.Name] = true
 
 	for _, v := range ticklerEvent.fnOpts.waitFor {
 		s.jobsWaitFor[v] = append(s.jobsWaitFor[v], ticklerEvent.ch)
@@ -216,15 +215,23 @@ func (s *Tickler) Stop() {
 	s.ctx = ctx
 }
 
+func (s *Tickler) SetContext(ctx context.Context) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.ctx = ctx
+}
+
 // New creates a new Tickler with default settings.
-func New() *Tickler {
+func New(ctx context.Context, limit int) *Tickler {
+
 	service := &Tickler{
 		queue: list.New(),
 		options: Options{
-			sema: make(chan int, defaultRequestLimit),
+			sema: make(chan int, limit),
 		},
-		ctx:         context.Background(),
-		loopSignal:  make(chan struct{}, defaultRequestLimit),
+		ctx:         ctx,
+		loopSignal:  make(chan struct{}, limit),
 		currentJobs: make(map[string]bool),
 		jobsWaitFor: make(map[string][]chan struct{}),
 		resultCh:    make(map[string][]chan status),

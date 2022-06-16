@@ -6,9 +6,8 @@ import (
 )
 
 type (
-	JobName                 = string
-	BackgroundFn            = func() error
-	BackgroundFnWithContext = func(context.Context) error
+	JobName            = string
+	BackgroundFunction = func() error
 )
 
 type status = int
@@ -20,7 +19,7 @@ const (
 )
 
 const (
-	defaultRequestLimit = 100
+	DefaultRequestLimit = 100
 )
 
 type Options struct {
@@ -37,8 +36,8 @@ func newEvent(ctx context.Context, request Request, opts ...EventOption) *Event 
 				maxRetries: 1,
 			},
 		},
-		f:        request.F,
-		Job:      request.Job,
+		f:        request.Job,
+		Job:      request.Name,
 		ctx:      ctx,
 		ch:       make(chan struct{}),
 		result:   statusSuccess,
@@ -103,7 +102,7 @@ func IfFailure(jobNames ...JobName) EventOption {
 }
 
 // WithRetry runs the given function with the given number of retries.
-// It uses the truncated exponantial backoff algorithm to determine the delay between retries.
+// It uses the truncated exponential backoff algorithm to determine the delay between retries.
 func WithRetry(maxRetries int) EventOption {
 	return newEventOption(func(t *eventOptions) {
 		t.retryOpts = retryOptions{
