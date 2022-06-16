@@ -19,7 +19,7 @@ const (
 )
 
 const (
-	DefaultRequestLimit = 100
+	defaultRequestLimit = 100
 )
 
 type Options struct {
@@ -29,8 +29,8 @@ type Options struct {
 	sema chan int
 }
 
-func newEvent(ctx context.Context, request Request, opts ...EventOption) *Event {
-	t := &Event{
+func newEvent(ctx context.Context, request Request, opts ...EventOption) *event {
+	t := &event{
 		fnOpts: &eventOptions{
 			retryOpts: retryOptions{
 				maxRetries: 1,
@@ -81,7 +81,7 @@ func newEventOption(f func(*eventOptions)) *eventOption {
 	}
 }
 
-func WaitForJobs(jobNames ...JobName) EventOption {
+func WaitFor(jobNames ...JobName) EventOption {
 	return newEventOption(func(t *eventOptions) {
 		t.waitFor = jobNames
 	})

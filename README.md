@@ -1,17 +1,22 @@
 <div align="center">
 <h1>tickler</h1>
 
-[tickler](https://github.com/goodjobtech/tickler), Background job scheduler library for Golang
+[Tickler](https://github.com/goodjobtech/tickler), a general purpose library for long-running services **enqueuing** and **processing** jobs in the background with **simplicity** and **performance** in mind. 
+
 
 </div>
 
 ## Installation
 
-You can import tickler to your project as:
+With Go module support (Go 1.11+), simply add the following import
+```go
+import "github.com/goodjobtech/tickler"
+```
+
+Otherwise, to install the tickler, run the following command:
 
 ```shell
-go get github.com/goodjobtech/tickler
-go install github.com/goodjobtech/tickler
+$ go get -u github.com/goodjobtech/tickler
 ```
 
 ## Usage
@@ -27,16 +32,14 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
-	limit := tickler.DefaultRequestLimit
-	
-	scheduler := tickler.New(ctx, limit)
+	// Create a mnew
+	tl := tickler.New()
 	
 	// Starts service loop to process jobs
-	scheduler.Start()
+	tl.Start()
 	
 	// Stops service loop to process next jobs
-	scheduler.Stop()
+	tl.Stop()
 }
 ```
 
@@ -52,10 +55,7 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
-	limit := tickler.DefaultRequestLimit
-
-	scheduler := tickler.New(ctx, limit)
+	tl := tickler.New()
 
 	request := tickler.Request{
 		Job: func() error {
@@ -65,7 +65,7 @@ func main() {
 		Name: "hello-world",
 	}
 
-	scheduler.Enqueue(request)
+	tl.Enqueue(request)
 }
 ```
 
@@ -81,10 +81,7 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
-	limit := tickler.DefaultRequestLimit
-
-	scheduler := tickler.New(ctx, limit)
+	scheduler := tickler.New()
 
 	request := tickler.Request{
 		Job: func() error {
@@ -95,11 +92,11 @@ func main() {
 	}
     
 	ctx = context.WithValue(ctx, "name", "tickler")
-	scheduler.EnqueueWithContext(ctx, request)
+	tl.EnqueueWithContext(ctx, request)
 }
 ```
 
-### Wait for a job to be completed
+### Wait for another job to be completed
 
 ```go
 package main
@@ -108,37 +105,35 @@ import (
 	"context"
 	"fmt"
 	"github.com/goodjobtech/tickler"
+	"time"
 )
 
 func main() {
-	ctx := context.Background()
-	limit := tickler.DefaultRequestLimit
-
-	scheduler := tickler.New(ctx, limit)
+	tl := tickler.New()
 
 	request := tickler.Request{
 		Job: func() error {
-			fmt.Println("Hello World!")
+			time.Sleep(time.Second * 5)
 			return nil
 		},
-		Name: "hello-world",
+		Name: "cpu-heavy-job",
 	}
 
-	scheduler.Enqueue(request)
+	tl.Enqueue(request)
 
 	waitRequest := tickler.Request{
 		Job: func() error {
-			fmt.Println("I am waiting")
+			fmt.Println("CPU heavy job is done!")
 			return nil
 		},
 		Name: "waiting",
 	}
 
-	scheduler.Enqueue(waitRequest, tickler.WaitForJobs("hello-world"))
+	tl.Enqueue(waitRequest, tickler.WaitFor("cpu-heavy-job"))
 }
 ```
 
-### Process a job if its parent job is successfully completed
+### Enqueue a job if a given job is successfully completed
 
 If a job returns with no error, i.e. `err == nil`, it is succeeded.
 
@@ -152,10 +147,7 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
-	limit := tickler.DefaultRequestLimit
-
-	scheduler := tickler.New(ctx, limit)
+	tl := tickler.New()
 
 	request := tickler.Request{
 		Job: func() error {
@@ -165,7 +157,7 @@ func main() {
 		Name: "hello-world",
 	}
 
-	scheduler.Enqueue(request)
+	tl.Enqueue(request)
 
 	waitRequest := tickler.Request{
 		Job: func() error {
@@ -176,11 +168,11 @@ func main() {
 	}
 	
 	// This will be executed
-	scheduler.Enqueue(waitRequest, tickler.IfSuccess("hello-world"))
+	tl.Enqueue(waitRequest, tickler.IfSuccess("hello-world"))
 }
 ```
 
-### Process a job if its parent job is failed
+### Enqueue a job if a given job is failed
 
 If a job returns with error, i.e. `err != nil`, it is failed.
 
@@ -195,10 +187,7 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
-	limit := tickler.DefaultRequestLimit
-
-	scheduler := tickler.New(ctx, limit)
+	tl := tickler.New()
 
 	request := tickler.Request{
 		Job: func() error {
@@ -208,7 +197,7 @@ func main() {
 		Name: "hello-world",
 	}
 
-	scheduler.Enqueue(request)
+	tl.Enqueue(request)
 
 	waitRequest := tickler.Request{
 		Job: func() error {
@@ -219,7 +208,7 @@ func main() {
 	}
 
 	// This will be executed
-	scheduler.Enqueue(waitRequest, tickler.IfFailure("hello-world"))
+	tl.Enqueue(waitRequest, tickler.IfFailure("hello-world"))
 }
 ```
 
@@ -238,10 +227,7 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
-	limit := tickler.DefaultRequestLimit
-
-	scheduler := tickler.New(ctx, limit)
+	tl := tickler.New()
 
 	counter := 3
 
@@ -259,7 +245,7 @@ func main() {
 	}
 
 	// This job will be called maximum 4 times.
-	scheduler.Enqueue(request, tickler.WithRetry(4))
+	tl.Enqueue(request, tickler.WithRetry(4))
 }
 ```
 
@@ -269,4 +255,4 @@ All kinds of pull request and feature requests are welcomed!
 
 ## License
 
-tickler's source code is licensed under [MIT License](https://choosealicense.com/licenses/mit/).
+Tickler's source code is licensed under [MIT License](https://choosealicense.com/licenses/mit/).

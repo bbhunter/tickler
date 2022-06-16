@@ -1,7 +1,6 @@
 package tickler
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -9,7 +8,7 @@ import (
 )
 
 func TestTicklerIntegration(t *testing.T) {
-	tl := New(context.Background(), DefaultRequestLimit)
+	tl := New()
 	tl.Start()
 	tl.Enqueue(Request{Name: "1", Job: func() error {
 		fmt.Println("1")
@@ -26,17 +25,17 @@ func TestTicklerIntegration(t *testing.T) {
 	tl.Enqueue(Request{Name: "3", Job: func() error {
 		fmt.Println("3")
 		return nil
-	}}, WaitForJobs("1", "2"))
+	}}, WaitFor("1", "2"))
 
 	tl.Enqueue(Request{Name: "4", Job: func() error {
 		fmt.Println("4")
 		return nil
-	}}, WaitForJobs("3"))
+	}}, WaitFor("3"))
 
 	tl.Enqueue(Request{Name: "5", Job: func() error {
 		fmt.Println("5")
 		return nil
-	}}, WaitForJobs("3", "2", "4"))
+	}}, WaitFor("3", "2", "4"))
 
 	time.Sleep(time.Second * 6)
 
@@ -59,7 +58,7 @@ func TestTicklerIntegration(t *testing.T) {
 }
 
 func TestTicklerIfSuccess(t *testing.T) {
-	tl := New(context.Background(), DefaultRequestLimit)
+	tl := New()
 	tl.Start()
 
 	tl.Enqueue(Request{Name: "1", Job: func() error {
@@ -86,7 +85,7 @@ func TestTicklerIfSuccess(t *testing.T) {
 }
 
 func TestTicklerRetry(t *testing.T) {
-	tl := New(context.Background(), DefaultRequestLimit)
+	tl := New()
 	tl.Start()
 
 	tl.Enqueue(Request{Name: "1", Job: func() error {

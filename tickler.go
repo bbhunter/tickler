@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// Tickler is a service that can be used to schedule and run the background tasks/jobs
 type Tickler struct {
 	mu         sync.Mutex
 	ctx        context.Context
@@ -20,7 +21,7 @@ type Tickler struct {
 	resultCh    map[JobName][]chan status
 }
 
-type Event struct {
+type event struct {
 	fnOpts *eventOptions
 	Job    JobName
 	f      BackgroundFunction
@@ -31,6 +32,7 @@ type Event struct {
 	resultCh chan status
 }
 
+// Request is a request to be executed
 type Request struct {
 	Job  BackgroundFunction
 	Name JobName
@@ -104,13 +106,13 @@ func (s *Tickler) tryDequeue() {
 	}
 }
 
-func (s *Tickler) dequeue() *Event {
+func (s *Tickler) dequeue() *event {
 	element := s.queue.Front()
 	s.queue.Remove(element)
-	return element.Value.(*Event)
+	return element.Value.(*event)
 }
 
-func (s *Tickler) removeJob(event *Event) {
+func (s *Tickler) removeJob(event *event) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -132,7 +134,7 @@ type eventResults struct {
 	TotalEvents     int
 }
 
-func (s *Tickler) process(event *Event) {
+func (s *Tickler) process(event *event) {
 	defer s.replenish()
 	defer s.removeJob(event)
 
@@ -205,6 +207,7 @@ func (s *Tickler) tickleLoop() {
 	}
 }
 
+// Start the tickler service
 func (s *Tickler) Start() {
 	go s.loop()
 }
@@ -215,6 +218,7 @@ func (s *Tickler) Stop() {
 	s.ctx = ctx
 }
 
+// SetContext sets the context for the tickler
 func (s *Tickler) SetContext(ctx context.Context) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -222,23 +226,51 @@ func (s *Tickler) SetContext(ctx context.Context) {
 	s.ctx = ctx
 }
 
+// GetContext returns the context of the tickler
+func (s *Tickler) GetContext() context.Context {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.ctx
+}
+
+// GetQueueLength returns the length of the queue
+func (s *Tickler) GetQueueLength() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.queue.Len()
+}
+
+// GetCurrentJobs returns a list of jobs that are currently running
+func (s *Tickler) GetCurrentJobs() map[string]bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.currentJobs
+}
+
+// Limit the number of jobs that can be run at the same time
+// the default size is 100.
+func (s *Tickler) Limit(newLimit int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Increase the size of the semaphore
+	s.options.sema = make(chan int, newLimit)
+	s.loopSignal = make(chan struct{}, newLimit)
+}
+
 // New creates a new Tickler with default settings.
-func New(ctx context.Context, limit int) *Tickler {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	if limit < 1 {
-		limit = DefaultRequestLimit
-	}
-
+// The Tickler will not start until the Start method is called.
+func New() *Tickler {
 	service := &Tickler{
 		queue: list.New(),
 		options: Options{
-			sema: make(chan int, limit),
+			sema: make(chan int, defaultRequestLimit),
 		},
-		ctx:         ctx,
-		loopSignal:  make(chan struct{}, limit),
+		ctx:         context.Background(),
+		loopSignal:  make(chan struct{}, defaultRequestLimit),
 		currentJobs: make(map[string]bool),
 		jobsWaitFor: make(map[string][]chan struct{}),
 		resultCh:    make(map[string][]chan status),
