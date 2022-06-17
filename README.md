@@ -1,7 +1,7 @@
 <div align="center">
 <h1>tickler</h1>
 
-[Tickler](https://github.com/goodjobtech/tickler), is a library for long-running services to **enqueue** and **process** the jobs in the background with **simplicity** and **performance** in mind. 
+[Tickler](https://github.com/goodjobtech/tickler), is a library for long-running services to **enqueue** and **process** jobs in the background with **simplicity** and **performance** in mind. 
 
 
 </div>
@@ -10,16 +10,46 @@
 
 With Go module support (Go 1.11+), simply add the following import
 ```go
+package main
+
 import "github.com/goodjobtech/tickler"
 ```
 
 Otherwise, to install the tickler, run the following command:
 
 ```shell
-$ go get -u github.com/goodjobtech/tickler
+go get -u github.com/goodjobtech/tickler
 ```
 
 ## Usage
+
+### Create a Tickler instance
+
+```go
+package main
+
+import (
+	"context"
+	"github.com/goodjobtech/tickler"
+)
+
+func main() {
+	tl := tickler.New()
+
+	// Optional, overrides default queue length
+	tl.Limit(10)
+
+	// Optional, overrides default context, context.Background()
+	ctx := context.WithValue(context.Background(), "name", "tickler")
+	tl.SetContext(ctx)
+	
+	// Starts processing jobs in the queue
+	tl.Start()
+	
+	// Stops tickler to process new jobs
+	tl.Stop()
+}
+```
 
 ### Enqueue a job
 
@@ -27,7 +57,6 @@ $ go get -u github.com/goodjobtech/tickler
 package main
 
 import (
-	"context"
 	"fmt"
 	"github.com/goodjobtech/tickler"
 )
@@ -53,7 +82,6 @@ func main() {
 package main
 
 import (
-	"context"
 	"fmt"
 	"github.com/goodjobtech/tickler"
 	"time"
@@ -92,7 +120,6 @@ If a job returns with no error, i.e. `err == nil`, it is succeeded.
 package main
 
 import (
-	"context"
 	"fmt"
 	"github.com/goodjobtech/tickler"
 )
@@ -131,7 +158,6 @@ If a job returns with error, i.e. `err != nil`, it is failed.
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"github.com/goodjobtech/tickler"
@@ -171,7 +197,6 @@ func main() {
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"github.com/goodjobtech/tickler"
