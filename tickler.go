@@ -72,6 +72,10 @@ func (s *Tickler) Enqueue(request Request, opts ...EventOption) {
 		s.resultCh[v] = append(s.resultCh[v], ticklerEvent.resultCh)
 	}
 
+	for _, v := range ticklerEvent.fnOpts.ifFailure {
+		s.resultCh[v] = append(s.resultCh[v], ticklerEvent.resultCh)
+	}
+
 	s.queue.PushBack(ticklerEvent)
 	log.Printf("Added request to queue with length %d\n", s.queue.Len())
 }
