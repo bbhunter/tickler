@@ -50,7 +50,8 @@ func TestTickler_GetCurrentJobs(t *testing.T) {
 func TestTickler_GetContext(t *testing.T) {
 	tl := New()
 	ctx := tl.GetContext()
-	assert.Equal(t, ctx, tl.ctx)
+
+	assert.NotNil(t, ctx)
 }
 
 func TestTickler_SetContext(t *testing.T) {
@@ -59,7 +60,10 @@ func TestTickler_SetContext(t *testing.T) {
 	ctx := context.WithValue(context.Background(), "name", "test")
 	tl.SetContext(ctx)
 
-	assert.Equal(t, ctx.Value("name"), tl.GetContext().Value("name"))
+	expected := ctx.Value("name").(string)
+	actual := tl.GetContext().Value("name").(string)
+
+	assert.Equal(t, expected, actual)
 }
 
 func TestTickler_Limit(t *testing.T) {

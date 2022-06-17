@@ -40,7 +40,7 @@ func newEvent(ctx context.Context, request Request, opts ...EventOption) *event 
 		Job:      request.Name,
 		ctx:      ctx,
 		ch:       make(chan struct{}),
-		result:   statusSuccess,
+		result:   statusUndefined,
 		resultCh: make(chan status),
 	}
 
