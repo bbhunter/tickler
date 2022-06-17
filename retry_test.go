@@ -1,33 +1,30 @@
 package tickler
 
 import (
+	"github.com/goodjobtech/assert"
 	"testing"
 	"time"
 )
 
-func Test1(t *testing.T) {
+func TestBackoff_Next(t *testing.T) {
 	b := &backoff{
 		Min:    100 * time.Millisecond,
 		Max:    10 * time.Second,
 		Factor: 2,
 	}
 
-	if !assert(b.Duration(), time.Millisecond*100) {
-		t.Fatalf("step 1 failed")
-	}
-
-	if !assert(b.Duration(), time.Millisecond*200) {
-		t.Fatalf("step 2 failed")
-	}
-	if !assert(b.Duration(), time.Millisecond*400) {
-		t.Fatalf("step 3 failed")
-	}
-
-	if !assert(b.Duration(), time.Millisecond*800) {
-		t.Fatalf("step 4 failed")
-	}
+	assert.Equal(t, time.Millisecond*200, b.Next(1))
 }
 
-func assert[T comparable](left, right T) bool {
-	return left == right
+func TestBackoff_Duration(t *testing.T) {
+	b := &backoff{
+		Min:    100 * time.Millisecond,
+		Max:    10 * time.Second,
+		Factor: 2,
+	}
+
+	assert.Equal(t, time.Millisecond*100, b.Duration())
+	assert.Equal(t, time.Millisecond*200, b.Duration())
+	assert.Equal(t, time.Millisecond*400, b.Duration())
+	assert.Equal(t, time.Millisecond*800, b.Duration())
 }

@@ -124,6 +124,7 @@ func (s *Tickler) removeJob(event *event) {
 		v <- event.result
 	}
 
+	delete(s.resultCh, event.Job)
 	delete(s.jobsWaitFor, event.Job)
 	delete(s.currentJobs, event.Job)
 }
@@ -187,9 +188,11 @@ func (s *Tickler) process(event *event) {
 				break
 			}
 
-			backoff := event.fnOpts.retryOpts.backoff.Duration()
-			log.Printf("Retrying in %v seconds", backoff)
-			time.Sleep(backoff)
+			if i != event.fnOpts.retryOpts.maxRetries-1 {
+				backoff := event.fnOpts.retryOpts.backoff.Duration()
+				log.Printf("Retrying in %v seconds", backoff)
+				time.Sleep(backoff)
+			}
 		}
 	}
 }
@@ -223,6 +226,7 @@ func (s *Tickler) SetContext(ctx context.Context) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	s.options.Ctx = ctx
 	s.ctx = ctx
 }
 
@@ -257,6 +261,7 @@ func (s *Tickler) Limit(newLimit int) {
 	defer s.mu.Unlock()
 
 	// Increase the size of the semaphore
+	s.options.Limit = int64(newLimit)
 	s.options.sema = make(chan int, newLimit)
 	s.loopSignal = make(chan struct{}, newLimit)
 }
