@@ -35,6 +35,7 @@ import (
 
 func main() {
 	tl := tickler.New()
+	tl.Start()
 
 	request := tickler.Request{
 		Job: func() error {
@@ -61,6 +62,7 @@ import (
 
 func main() {
 	tl := tickler.New()
+	tl.Start()
 
 	request := tickler.Request{
 		Job: func() error {
@@ -98,6 +100,7 @@ import (
 
 func main() {
 	tl := tickler.New()
+	tl.Start()
 
 	request := tickler.Request{
 		Job: func() error {
@@ -137,6 +140,7 @@ import (
 
 func main() {
 	tl := tickler.New()
+	tl.Start()
 
 	request := tickler.Request{
 		Job: func() error {
@@ -176,6 +180,7 @@ import (
 
 func main() {
 	tl := tickler.New()
+	tl.Start()
 
 	counter := 3
 
