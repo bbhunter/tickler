@@ -23,34 +23,6 @@ go get -u github.com/goodjobtech/tickler
 
 ## Usage
 
-### Create a Tickler instance
-
-```go
-package main
-
-import (
-	"context"
-	"github.com/goodjobtech/tickler"
-)
-
-func main() {
-	tl := tickler.New()
-
-	// Optional, overrides default queue length
-	tl.Limit(10)
-
-	// Optional, overrides default context, context.Background()
-	ctx := context.WithValue(context.Background(), "name", "tickler")
-	tl.SetContext(ctx)
-	
-	// Starts processing jobs in the queue
-	tl.Start()
-	
-	// Stops tickler to process new jobs
-	tl.Stop()
-}
-```
-
 ### Enqueue a job
 
 ```go
