@@ -10,8 +10,6 @@
 
 With Go module support (Go 1.11+), simply add the following import
 ```go
-package main
-
 import "github.com/goodjobtech/tickler"
 ```
 
